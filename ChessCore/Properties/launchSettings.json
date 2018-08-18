@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ChessCore": {
+      "commandName": "Project",
+      "commandLineArgs": "/setwin=-1100,400,993,519 /mode=TEST /consoleLog=true"
+    }
+  }
+}

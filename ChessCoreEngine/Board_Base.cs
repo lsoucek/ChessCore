@@ -1,11 +1,13 @@
+using ChessCoreEngine.Utils;
 using System;
-
+using System.Collections.Generic;
 
 namespace ChessEngine.Engine
 {
-    internal sealed class Board
+    public partial class Board
     {
-      
+        static Logger logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+
         internal Square[] Squares;
               
         internal bool InsufficientMaterial;
@@ -557,22 +559,22 @@ namespace ChessEngine.Engine
 
         #region PrivateMethods
 
-        private static bool PromotePawns(Board board, Piece piece, byte dstPosition, ChessPieceType promoteToPiece)
+        private bool PromotePawns(Piece piece, byte dstPosition, ChessPieceType promoteToPiece)
         {
             if (piece.PieceType == ChessPieceType.Pawn)
             {
                 if (dstPosition < 8)
                 {
-                    board.Squares[dstPosition].Piece.PieceType = promoteToPiece;
-                    board.Squares[dstPosition].Piece.PieceValue = Piece.CalculatePieceValue(promoteToPiece);
-                    board.Squares[dstPosition].Piece.PieceActionValue = Piece.CalculatePieceActionValue(promoteToPiece);
+                    Squares[dstPosition].Piece.PieceType = promoteToPiece;
+                    Squares[dstPosition].Piece.PieceValue = Piece.CalculatePieceValue(promoteToPiece);
+                    Squares[dstPosition].Piece.PieceActionValue = Piece.CalculatePieceActionValue(promoteToPiece);
                     return true;
                 }
                 if (dstPosition > 55)
                 {
-                    board.Squares[dstPosition].Piece.PieceType = promoteToPiece;
-                    board.Squares[dstPosition].Piece.PieceValue = Piece.CalculatePieceValue(promoteToPiece);
-                    board.Squares[dstPosition].Piece.PieceActionValue = Piece.CalculatePieceActionValue(promoteToPiece);
+                    Squares[dstPosition].Piece.PieceType = promoteToPiece;
+                    Squares[dstPosition].Piece.PieceValue = Piece.CalculatePieceValue(promoteToPiece);
+                    Squares[dstPosition].Piece.PieceActionValue = Piece.CalculatePieceActionValue(promoteToPiece);
                     return true;
                 }
             }
@@ -580,69 +582,54 @@ namespace ChessEngine.Engine
             return false;
         }
 
-        private static void RecordEnPassant(ChessPieceColor pcColor, ChessPieceType pcType, Board board, byte srcPosition, byte dstPosition)
+        private void RecordEnPassant(ChessPieceColor pcColor, ChessPieceType pcType, byte srcPosition, byte dstPosition)
         {
             //Record En Passant if Pawn Moving
             if (pcType == ChessPieceType.Pawn)
             {
                 //Reset FiftyMoveCount if pawn moved
-                board.FiftyMove = 0;
+                FiftyMove = 0;
 
                 int difference = srcPosition - dstPosition; 
 
                 if (difference == 16 || difference == -16)
                 {
-                    board.EnPassantPosition = (byte)(dstPosition + (difference / 2));
-                    board.EnPassantColor = pcColor;
+                    EnPassantPosition = (byte)(dstPosition + (difference / 2));
+                    EnPassantColor = pcColor;
                 }
             }
         }
 
-        private static bool SetEnpassantMove(Board board, byte srcPosition, byte dstPosition, ChessPieceColor pcColor)
+        private bool SetEnpassantMove(byte srcPosition, byte dstPosition, ChessPieceColor pcColor)
         {
-            if (board.EnPassantPosition != dstPosition)
-            {
-                return false;
-            }
+            if (EnPassantPosition != dstPosition) return false;
 
-            if (pcColor == board.EnPassantColor)
-            {
-                return false;
-            }
-
-            if (board.Squares[srcPosition].Piece.PieceType != ChessPieceType.Pawn)
-            {
-                return false;
-            }
+            if (pcColor == EnPassantColor) return false;
+            
+            if (Squares[srcPosition].Piece.PieceType != ChessPieceType.Pawn) return false;
 
             int pieceLocationOffset = 8;
 
-            if (board.EnPassantColor == ChessPieceColor.White)
-            {
-                pieceLocationOffset = -8;
-            }
+            if (EnPassantColor == ChessPieceColor.White) pieceLocationOffset = -8;
 
             dstPosition = (byte)(dstPosition + pieceLocationOffset);
 
-            Square sqr = board.Squares[dstPosition];
+            Square sqr = Squares[dstPosition];
 
-            board.LastMove.TakenPiece = new PieceTaken(sqr.Piece.PieceColor, sqr.Piece.PieceType, sqr.Piece.Moved, dstPosition);
+            LastMove.TakenPiece = new PieceTaken(sqr.Piece.PieceColor, sqr.Piece.PieceType, sqr.Piece.Moved, dstPosition);
 
-            board.Squares[dstPosition].Piece = null;
+            Squares[dstPosition].Piece = null;
                     
             //Reset FiftyMoveCount if capture
-            board.FiftyMove = 0;
+            FiftyMove = 0;
 
             return true;
 
         }
 
-        private static void KingCastle(Board board, Piece piece, byte srcPosition, byte dstPosition)
+        private void KingCastle(Piece piece, byte srcPosition, byte dstPosition)
         {
-            if (piece.PieceType != ChessPieceType.King)
-            {
-                return;
-            }
+            if (piece.PieceType != ChessPieceType.King) return;
 
             //Lets see if this is a casteling move.
             if (piece.PieceColor == ChessPieceColor.White && srcPosition == 60)
@@ -651,13 +638,13 @@ namespace ChessEngine.Engine
                 if (dstPosition == 62)
                 {
                     //Ok we are casteling we need to move the Rook
-                    if (board.Squares[63].Piece != null)
+                    if (Squares[63].Piece != null)
                     {
-                        board.Squares[61].Piece = board.Squares[63].Piece;
-                        board.Squares[63].Piece = null;
-                        board.WhiteCastled = true;
-                        board.LastMove.MovingPieceSecondary = new PieceMoving(board.Squares[61].Piece.PieceColor, board.Squares[61].Piece.PieceType, board.Squares[61].Piece.Moved, 63, 61);
-                        board.Squares[61].Piece.Moved = true;
+                        Squares[61].Piece = Squares[63].Piece;
+                        Squares[63].Piece = null;
+                        WhiteCastled = true;
+                        LastMove.MovingPieceSecondary = new PieceMoving(Squares[61].Piece.PieceColor, Squares[61].Piece.PieceType, Squares[61].Piece.Moved, 63, 61);
+                        Squares[61].Piece.Moved = true;
                         return;
                     }
                 }
@@ -665,13 +652,13 @@ namespace ChessEngine.Engine
                 else if (dstPosition == 58)
                 {   
                     //Ok we are casteling we need to move the Rook
-                    if (board.Squares[56].Piece != null)
+                    if (Squares[56].Piece != null)
                     {
-                        board.Squares[59].Piece = board.Squares[56].Piece;
-                        board.Squares[56].Piece = null;
-                        board.WhiteCastled = true;
-                        board.LastMove.MovingPieceSecondary = new PieceMoving(board.Squares[59].Piece.PieceColor, board.Squares[59].Piece.PieceType, board.Squares[59].Piece.Moved, 56, 59);
-                        board.Squares[59].Piece.Moved = true;
+                        Squares[59].Piece = Squares[56].Piece;
+                        Squares[56].Piece = null;
+                        WhiteCastled = true;
+                        LastMove.MovingPieceSecondary = new PieceMoving(Squares[59].Piece.PieceColor, Squares[59].Piece.PieceType, Squares[59].Piece.Moved, 56, 59);
+                        Squares[59].Piece.Moved = true;
                         return;
                     }
                 }
@@ -681,13 +668,13 @@ namespace ChessEngine.Engine
                 if (dstPosition == 6)
                 {
                     //Ok we are casteling we need to move the Rook
-                    if (board.Squares[7].Piece != null)
+                    if (Squares[7].Piece != null)
                     {
-                        board.Squares[5].Piece = board.Squares[7].Piece;
-                        board.Squares[7].Piece = null;
-                        board.BlackCastled = true;
-                        board.LastMove.MovingPieceSecondary = new PieceMoving(board.Squares[5].Piece.PieceColor, board.Squares[5].Piece.PieceType, board.Squares[5].Piece.Moved, 7, 5);
-                        board.Squares[5].Piece.Moved = true;
+                        Squares[5].Piece = Squares[7].Piece;
+                        Squares[7].Piece = null;
+                        BlackCastled = true;
+                        LastMove.MovingPieceSecondary = new PieceMoving(Squares[5].Piece.PieceColor, Squares[5].Piece.PieceType, Squares[5].Piece.Moved, 7, 5);
+                        Squares[5].Piece.Moved = true;
                         return;
                     }
                 }
@@ -695,13 +682,13 @@ namespace ChessEngine.Engine
                 else if (dstPosition == 2)
                 {
                     //Ok we are casteling we need to move the Rook
-                    if (board.Squares[0].Piece != null)
+                    if (Squares[0].Piece != null)
                     {
-                        board.Squares[3].Piece = board.Squares[0].Piece;
-                        board.Squares[0].Piece = null;
-                        board.BlackCastled = true;
-                        board.LastMove.MovingPieceSecondary = new PieceMoving(board.Squares[3].Piece.PieceColor, board.Squares[3].Piece.PieceType, board.Squares[3].Piece.Moved, 0, 3);
-                        board.Squares[3].Piece.Moved = true;
+                        Squares[3].Piece = Squares[0].Piece;
+                        Squares[0].Piece = null;
+                        BlackCastled = true;
+                        LastMove.MovingPieceSecondary = new PieceMoving(Squares[3].Piece.PieceColor, Squares[3].Piece.PieceType, Squares[3].Piece.Moved, 0, 3);
+                        Squares[3].Piece.Moved = true;
                         return;
                     }
                 }
@@ -715,7 +702,7 @@ namespace ChessEngine.Engine
         #region InternalMethods
 
         //Fast Copy
-        internal Board FastCopy()
+        internal Board FastBoardCopy()
         {
             Board clonedBoard = new Board(Squares);
 
@@ -736,86 +723,84 @@ namespace ChessEngine.Engine
             return clonedBoard;
         }
 
-        internal static MoveContent MovePiece(Board board, byte srcPosition, byte dstPosition, ChessPieceType promoteToPiece)
+        internal MoveContent MovePiece(byte srcPosition, byte dstPosition, ChessPieceType promoteToPiece)
         {
-            Piece piece = board.Squares[srcPosition].Piece;
+            Piece piece = Squares[srcPosition].Piece;
 
             //Record my last move
-            board.LastMove = new MoveContent();
+            LastMove = new MoveContent();
 
             
 
             if (piece.PieceColor == ChessPieceColor.Black)
             {
-                board.MoveCount++;
+                MoveCount++;
                 //Add One to FiftyMoveCount to check for tie.
-                board.FiftyMove++;
+                FiftyMove++;
             }
 
             //En Passant
-            if (board.EnPassantPosition > 0)
+            if (EnPassantPosition > 0)
             {
-                board.LastMove.EnPassantOccured = SetEnpassantMove(board, srcPosition, dstPosition, piece.PieceColor);
+                LastMove.EnPassantOccured = SetEnpassantMove(srcPosition, dstPosition, piece.PieceColor);
             }
 
-            if (!board.LastMove.EnPassantOccured)
+            if (!LastMove.EnPassantOccured)
             {
-                Square sqr = board.Squares[dstPosition];
+                Square sqr = Squares[dstPosition];
 
                 if (sqr.Piece != null)
                 {
-                    board.LastMove.TakenPiece = new PieceTaken(sqr.Piece.PieceColor, sqr.Piece.PieceType,
-                                                               sqr.Piece.Moved, dstPosition);
-                    board.FiftyMove = 0;
+                    LastMove.TakenPiece = new PieceTaken(sqr.Piece.PieceColor, sqr.Piece.PieceType, sqr.Piece.Moved, dstPosition);
+                    FiftyMove = 0;
                 }
                 else
                 {
-                    board.LastMove.TakenPiece = new PieceTaken(ChessPieceColor.White, ChessPieceType.None, false,
-                                                               dstPosition);
+                    LastMove.TakenPiece = new PieceTaken(ChessPieceColor.White, ChessPieceType.None, false, dstPosition);
                     
                 }
             }
 
-            board.LastMove.MovingPiecePrimary = new PieceMoving(piece.PieceColor, piece.PieceType, piece.Moved, srcPosition, dstPosition);
+            LastMove.MovingPiecePrimary = new PieceMoving(piece.PieceColor, piece.PieceType, piece.Moved, srcPosition, dstPosition);
 
             //Delete the piece in its source position
-            board.Squares[srcPosition].Piece = null;
+            Squares[srcPosition].Piece = null;
       
             //Add the piece to its new position
             piece.Moved = true;
             piece.Selected = false;
-            board.Squares[dstPosition].Piece = piece;
+            Squares[dstPosition].Piece = piece;
 
             //Reset EnPassantPosition
-            board.EnPassantPosition = 0;
+            EnPassantPosition = 0;
           
             //Record En Passant if Pawn Moving
             if (piece.PieceType == ChessPieceType.Pawn)
             {
-               board.FiftyMove = 0;
-               RecordEnPassant(piece.PieceColor, piece.PieceType, board, srcPosition, dstPosition);
+               FiftyMove = 0;
+               RecordEnPassant(piece.PieceColor, piece.PieceType, srcPosition, dstPosition);
             }
 
-            board.WhoseMove = board.WhoseMove == ChessPieceColor.White ? ChessPieceColor.Black : ChessPieceColor.White;
+            WhoseMove = WhoseMove == ChessPieceColor.White ? ChessPieceColor.Black : ChessPieceColor.White;
 
-            KingCastle(board, piece, srcPosition, dstPosition);
+            KingCastle(piece, srcPosition, dstPosition);
 
             //Promote Pawns 
-            if (PromotePawns(board, piece, dstPosition, promoteToPiece))
+            if (PromotePawns(piece, dstPosition, promoteToPiece))
             {
-                board.LastMove.PawnPromotedTo = promoteToPiece;
+                LastMove.PawnPromotedTo = promoteToPiece;
             }
             else
             {
-                board.LastMove.PawnPromotedTo = ChessPieceType.None;
+                LastMove.PawnPromotedTo = ChessPieceType.None;
             }
 
-            if ( board.FiftyMove >= 50)
+            if ( FiftyMove >= 50)
             {
-                board.StaleMate = true;
+                StaleMate = true;
             }
 
-            return board.LastMove;
+            return LastMove;
         }
 
         private static string GetColumnFromByte(byte column)
@@ -843,12 +828,9 @@ namespace ChessEngine.Engine
             }
         }
 
-        public new string ToString()
-        {
-            return Fen(false, this);
-        }
+        public new string ToString() => Fen(false);
 
-        internal static string Fen(bool boardOnly, Board board)
+        public string Fen(bool boardOnly)
         {
             string output = String.Empty;
             byte blankSquares = 0;
@@ -857,7 +839,7 @@ namespace ChessEngine.Engine
             {
                 byte index = x;
 
-                if (board.Squares[index].Piece != null)
+                if (Squares[index].Piece != null)
                 {
                     if (blankSquares > 0)
                     {
@@ -865,13 +847,13 @@ namespace ChessEngine.Engine
                         blankSquares = 0;
                     }
 
-                    if (board.Squares[index].Piece.PieceColor == ChessPieceColor.Black)
+                    if (Squares[index].Piece.PieceColor == ChessPieceColor.Black)
                     {
-                        output += Piece.GetPieceTypeShort(board.Squares[index].Piece.PieceType).ToLower();
+                        output += Piece.GetPieceTypeShort(Squares[index].Piece.PieceType).ToLower();
                     }
                     else
                     {
-                        output += Piece.GetPieceTypeShort(board.Squares[index].Piece.PieceType);
+                        output += Piece.GetPieceTypeShort(Squares[index].Piece.PieceType);
                     }
                 }
                 else
@@ -897,7 +879,7 @@ namespace ChessEngine.Engine
                 }
             }
 
-            if (board.WhoseMove == ChessPieceColor.White)
+            if (WhoseMove == ChessPieceColor.White)
             {
                 output += " w ";
             }
@@ -908,23 +890,23 @@ namespace ChessEngine.Engine
 
             string spacer = "";
 
-            if (board.WhiteCastled == false)
+            if (WhiteCastled == false)
             {
-                if (board.Squares[60].Piece != null)
+                if (Squares[60].Piece != null)
                 {
-                    if (board.Squares[60].Piece.Moved == false)
+                    if (Squares[60].Piece.Moved == false)
                     {
-                        if (board.Squares[63].Piece != null)
+                        if (Squares[63].Piece != null)
                         {
-                            if (board.Squares[63].Piece.Moved == false)
+                            if (Squares[63].Piece.Moved == false)
                             {
                                 output += "K";
                                 spacer = " ";
                             }
                         }
-                        if (board.Squares[56].Piece != null)
+                        if (Squares[56].Piece != null)
                         {
-                            if (board.Squares[56].Piece.Moved == false)
+                            if (Squares[56].Piece.Moved == false)
                             {
                                 output += "Q";
                                 spacer = " ";
@@ -934,23 +916,23 @@ namespace ChessEngine.Engine
                 }
             }
 
-            if (board.BlackCastled == false)
+            if (BlackCastled == false)
             {
-                if (board.Squares[4].Piece != null)
+                if (Squares[4].Piece != null)
                 {
-                    if (board.Squares[4].Piece.Moved == false)
+                    if (Squares[4].Piece.Moved == false)
                     {
-                        if (board.Squares[7].Piece != null)
+                        if (Squares[7].Piece != null)
                         {
-                            if (board.Squares[7].Piece.Moved == false)
+                            if (Squares[7].Piece.Moved == false)
                             {
                                 output += "k";
                                 spacer = " ";
                             }
                         }
-                        if (board.Squares[0].Piece != null)
+                        if (Squares[0].Piece != null)
                         {
-                            if (board.Squares[0].Piece.Moved == false)
+                            if (Squares[0].Piece.Moved == false)
                             {
                                 output += "q";
                                 spacer = " ";
@@ -962,15 +944,12 @@ namespace ChessEngine.Engine
                 
             }
 
-            if (output.EndsWith("/"))
-            {
-                output.TrimEnd('/');
-            }
+            if (output.EndsWith("/")) output.TrimEnd('/');
 
 
-            if (board.EnPassantPosition != 0)
+            if (EnPassantPosition != 0)
             {
-                output += spacer + GetColumnFromByte((byte)(board.EnPassantPosition % 8)) + "" + (byte)(8 - (byte)(board.EnPassantPosition / 8)) + " ";
+                output += spacer + GetColumnFromByte((byte)(EnPassantPosition % 8)) + "" + (byte)(8 - (byte)(EnPassantPosition / 8)) + " ";
             }
             else
             {
@@ -979,8 +958,8 @@ namespace ChessEngine.Engine
 
             if (!boardOnly)
             {
-                output += board.FiftyMove + " ";
-                output += board.MoveCount + 1;
+                output += FiftyMove + " ";
+                output += MoveCount + 1;
             }
             return output.Trim();
         }

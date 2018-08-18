@@ -1,10 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Threading.Tasks;
 
 namespace ChessEngine.Engine
 {
-    internal static class Search
+    public partial class Board
     {
         internal static int progress;
 		
@@ -19,27 +20,17 @@ namespace ChessEngine.Engine
             //internal bool TopSort;
             internal string Move;
 
-            public new string ToString()
-            {
-                return Move;
-            }
-
+            public new string ToString() => Move;
         }
 
         private static readonly Position[,] KillerMove = new Position[3,20];
         private static int kIndex;
 
-        private static int Sort(Position s2, Position s1)
-        {
-            return (s1.Score).CompareTo(s2.Score);
-        }
+        private static int ComparePositionScore(Position s2, Position s1) => (s1.Score).CompareTo(s2.Score);
 
-        private static int Sort(Board s2, Board s1)
-        {
-            return (s1.Score).CompareTo(s2.Score);
-        }
+        private static int CompareBoardScore(Board s2, Board s1) => (s1.Score).CompareTo(s2.Score);
 
-        private static int SideToMoveScore(int score, ChessPieceColor color)
+        private int SideToMoveScore(int score, ChessPieceColor color)
         {
             if (color == ChessPieceColor.Black)
                 return -score;
@@ -47,9 +38,7 @@ namespace ChessEngine.Engine
             return score;
         }
 
-       
-
-        internal static MoveContent IterativeSearch(Board examineBoard, byte depth, ref int nodesSearched, ref int nodesQuiessence, ref string pvLine, ref byte plyDepthReached, ref byte rootMovesSearched, List<OpeningMove> currentGameBook)
+        public MoveContent IterativeSearch(byte depth, ref int nodesSearched, ref int nodesQuiessence, ref string pvLine, ref byte plyDepthReached, ref byte rootMovesSearched, IDictionary<string,OpeningMove> currentGameBook)
         {
             List<Position> pvChild = new List<Position>();
             int alpha = -400000000;
@@ -59,7 +48,7 @@ namespace ChessEngine.Engine
             MoveContent bestMove = new MoveContent();
 
             //We are going to store our result boards here           
-            ResultBoards succ = GetSortValidMoves(examineBoard);
+            ResultBoards succ = GetSortValidMoves();
 
             rootMovesSearched = (byte)succ.Positions.Count;
 
@@ -70,6 +59,7 @@ namespace ChessEngine.Engine
             }
 
             //Can I make an instant mate?
+            //Parallel.ForEach<Board>(succ.Positions, pos => 
             foreach (Board pos in succ.Positions)
             {
                 int value = -AlphaBeta(pos, 1, -beta, -alpha, ref nodesSearched, ref nodesQuiessence, ref pvChild, true);
@@ -84,7 +74,7 @@ namespace ChessEngine.Engine
 
             alpha = -400000000;
 
-            succ.Positions.Sort(Sort);
+            succ.Positions.Sort(CompareBoardScore);
 
             depth--;
 
@@ -105,11 +95,11 @@ namespace ChessEngine.Engine
                     return pos.LastMove;
                 }
 
-                if (examineBoard.RepeatedMove == 2)
+                if (RepeatedMove == 2)
                 {
-                    string fen = Board.Fen(true, pos);
+                    string fen = pos.Fen(true);
 
-                    foreach (OpeningMove move in currentGameBook)
+                    foreach (OpeningMove move in currentGameBook.Values)
                     {
                         if (move.EndingFEN == fen)
                         {
@@ -142,68 +132,82 @@ namespace ChessEngine.Engine
             return bestMove;
         }
 
-        private static ResultBoards GetSortValidMoves(Board examineBoard)
+        private ResultBoards GetSortValidMoves()
         {
-            ResultBoards succ = new ResultBoards
-                                    {
-                                        Positions = new List<Board>(30)
-                                    };
+            ResultBoards succ = new ResultBoards { Positions = new List<Board>(30) };
 
             piecesRemaining = 0;
 
-            for (byte x = 0; x < 64; x++)
+#if (USETPL)
+            Parallel.For(0,64, (ii) =>
+#else
+            for (byte ii = 0; ii < 64; ii++)
+#endif
             {
-                Square sqr = examineBoard.Squares[x];
+                byte x = (byte)ii;
+                Square sqr = Squares[x];
 
                 //Make sure there is a piece on the square
                 if (sqr.Piece == null)
+#if (USETPL)
+                    return;
+#else
                     continue;
+#endif
 
                 piecesRemaining++;
 
                 //Make sure the color is the same color as the one we are moving.
-                if (sqr.Piece.PieceColor != examineBoard.WhoseMove)
+                if (sqr.Piece.PieceColor != WhoseMove)
+#if (USETPL)
+                    return;
+#else
                     continue;
+#endif
 
-                //For each valid move for this piece
+                    //For each valid move for this piece
                 foreach (byte dst in sqr.Piece.ValidMoves)
                 {
                     //We make copies of the board and move so that we can move it without effecting the parent board
-                    Board board = examineBoard.FastCopy();
+                    Board board = FastBoardCopy();
 
                     //Make move so we can examine it
-                    Board.MovePiece(board, x, dst, ChessPieceType.Queen);
+                    board.MovePiece(x, dst, ChessPieceType.Queen);
 
                     //We Generate Valid Moves for Board
-                    PieceValidMoves.GenerateValidMoves(board);
+                    board.GenerateValidMoves();
 
                     //Invalid Move
-                    if (board.WhiteCheck && examineBoard.WhoseMove == ChessPieceColor.White)
+                    if (board.WhiteCheck && WhoseMove == ChessPieceColor.White)
                     {
                         continue;
                     }
 
                     //Invalid Move
-                    if (board.BlackCheck && examineBoard.WhoseMove == ChessPieceColor.Black)
+                    if (board.BlackCheck && WhoseMove == ChessPieceColor.Black)
                     {
                         continue;
                     }
 
                     //We calculate the board score
-                    Evaluation.EvaluateBoardScore(board);
+                    board.EvaluateBoardScore();
 
                     //Invert Score to support Negamax
                     board.Score = SideToMoveScore(board.Score, board.WhoseMove);
 
                     succ.Positions.Add(board);
                 }
+
             }
 
-            succ.Positions.Sort(Sort);
+#if (USETPL)
+            );
+#endif
+            succ.Positions.Sort(CompareBoardScore);
             return succ;
         }
 
-        private static int AlphaBeta(Board examineBoard, byte depth, int alpha, int beta, ref int nodesSearched, ref int nodesQuiessence, ref List<Position> pvLine, bool extended)
+        private int AlphaBeta(Board examineBoard, byte depth, int alpha, int beta, ref int nodesSearched, ref int nodesQuiessence, ref List<Position> pvLine, bool extended)
         {
             nodesSearched++;
 
@@ -225,11 +229,11 @@ namespace ChessEngine.Engine
                 }
             }
 
-            List<Position> positions = EvaluateMoves(examineBoard, depth);
+            List<Position> positions = examineBoard.EvaluateMoves(depth);
 
             if (examineBoard.WhiteCheck || examineBoard.BlackCheck || positions.Count == 0)
             {
-                if (SearchForMate(examineBoard.WhoseMove, examineBoard, ref examineBoard.BlackMate, ref examineBoard.WhiteMate, ref examineBoard.StaleMate))
+                if (examineBoard.SearchForMate(examineBoard.WhoseMove))
                 {
                     if (examineBoard.BlackMate)
                     {
@@ -251,20 +255,20 @@ namespace ChessEngine.Engine
                 }
             }
 
-            positions.Sort(Sort);
+            positions.Sort(ComparePositionScore);
 
             foreach (Position move in positions)
             {
                 List<Position> pvChild = new List<Position>();
 
                 //Make a copy
-                Board board = examineBoard.FastCopy();
+                Board board = examineBoard.FastBoardCopy();
 
                 //Move Piece
-                Board.MovePiece(board, move.SrcPosition, move.DstPosition, ChessPieceType.Queen);
+                board.MovePiece(move.SrcPosition, move.DstPosition, ChessPieceType.Queen);
 
                 //We Generate Valid Moves for Board
-                PieceValidMoves.GenerateValidMoves(board);
+                board.GenerateValidMoves();
 
                 if (board.BlackCheck)
                 {
@@ -284,6 +288,8 @@ namespace ChessEngine.Engine
                     }
                 }
 
+                //if (logger.IsInfoLevelLog) logger.Info($"Go in depth {depth - 1} for board {board.Fen(true)}.");
+
                 int value = -AlphaBeta(board, (byte)(depth - 1), -beta, -alpha, ref nodesSearched, ref nodesQuiessence, ref pvChild, extended);
 
                 if (value >= beta)
@@ -298,11 +304,12 @@ namespace ChessEngine.Engine
                 }
                 if (value > alpha)
                 {
-                    Position pvPos = new Position();
-
-                    pvPos.SrcPosition = board.LastMove.MovingPiecePrimary.SrcPosition;
-                    pvPos.DstPosition = board.LastMove.MovingPiecePrimary.DstPosition;
-                    pvPos.Move = board.LastMove.ToString();
+                    Position pvPos = new Position
+                    {
+                        SrcPosition = board.LastMove.MovingPiecePrimary.SrcPosition,
+                        DstPosition = board.LastMove.MovingPiecePrimary.DstPosition,
+                        Move = board.LastMove.ToString()
+                    };
 
                     pvChild.Insert(0, pvPos);
 
@@ -315,12 +322,12 @@ namespace ChessEngine.Engine
             return alpha;
         }
 
-        private static int Quiescence(Board examineBoard, int alpha, int beta, ref int nodesSearched)
+        private int Quiescence(Board examineBoard, int alpha, int beta, ref int nodesSearched)
         {
             nodesSearched++;
 
             //Evaluate Score
-            Evaluation.EvaluateBoardScore(examineBoard);
+            examineBoard.EvaluateBoardScore();
 
             //Invert Score to support Negamax
             examineBoard.Score = SideToMoveScore(examineBoard.Score, examineBoard.WhoseMove);
@@ -333,23 +340,13 @@ namespace ChessEngine.Engine
 
             
             List<Position> positions;
-          
 
-            if (examineBoard.WhiteCheck || examineBoard.BlackCheck)
-            {
-                positions = EvaluateMoves(examineBoard, 0);
-            }
-            else
-            {
-                positions = EvaluateMovesQ(examineBoard);    
-            }
 
-            if (positions.Count == 0)
-            {
-                return examineBoard.Score;
-            }
+            positions = ((examineBoard.WhiteCheck || examineBoard.BlackCheck) ? examineBoard.EvaluateMoves(0) : examineBoard.EvaluateMovesQ());
+
+            if (positions.Count == 0) return examineBoard.Score;
             
-            positions.Sort(Sort);
+            positions.Sort(ComparePositionScore);
 
             foreach (Position move in positions)
             {
@@ -359,13 +356,13 @@ namespace ChessEngine.Engine
                 }
 
                 //Make a copy
-                Board board = examineBoard.FastCopy();
+                Board board = examineBoard.FastBoardCopy();
 
                 //Move Piece
-                Board.MovePiece(board, move.SrcPosition, move.DstPosition, ChessPieceType.Queen);
+                board.MovePiece(move.SrcPosition, move.DstPosition, ChessPieceType.Queen);
 
                 //We Generate Valid Moves for Board
-                PieceValidMoves.GenerateValidMoves(board);
+                board.GenerateValidMoves();
 
                 if (board.BlackCheck)
                 {
@@ -403,7 +400,7 @@ namespace ChessEngine.Engine
             return alpha;
         }
 
-        private static List<Position> EvaluateMoves(Board examineBoard, byte depth)
+        private List<Position> EvaluateMoves(byte depth)
         {
 
             //We are going to store our result boards here           
@@ -414,14 +411,14 @@ namespace ChessEngine.Engine
 
             for (byte x = 0; x < 64; x++)
             {
-                Piece piece = examineBoard.Squares[x].Piece;
+                Piece piece = Squares[x].Piece;
 
                 //Make sure there is a piece on the square
                 if (piece == null)
                     continue;
 
                 //Make sure the color is the same color as the one we are moving.
-                if (piece.PieceColor != examineBoard.WhoseMove)
+                if (piece.PieceColor != WhoseMove)
                     continue;
 
                 //For each valid move for this piece
@@ -447,7 +444,7 @@ namespace ChessEngine.Engine
                         continue;
                     }
 
-                    Piece pieceAttacked = examineBoard.Squares[move.DstPosition].Piece;
+                    Piece pieceAttacked = Squares[move.DstPosition].Piece;
 
                     //If the move is a capture add it's value to the score
                     if (pieceAttacked != null)
@@ -468,7 +465,7 @@ namespace ChessEngine.Engine
                     move.Score += piece.PieceActionValue;
 
                     //Add Score for Castling
-                    if (!examineBoard.WhiteCastled && examineBoard.WhoseMove == ChessPieceColor.White)
+                    if (!WhiteCastled && WhoseMove == ChessPieceColor.White)
                     {
 
                         if (piece.PieceType == ChessPieceType.King)
@@ -488,7 +485,7 @@ namespace ChessEngine.Engine
                         }
                     }
 
-                    if (!examineBoard.BlackCastled && examineBoard.WhoseMove == ChessPieceColor.Black)
+                    if (!BlackCastled && WhoseMove == ChessPieceColor.Black)
                     {
                         if (piece.PieceType == ChessPieceType.King)
                         {
@@ -514,27 +511,27 @@ namespace ChessEngine.Engine
             return positions;
         }
 
-        private static List<Position> EvaluateMovesQ(Board examineBoard)
+        private List<Position> EvaluateMovesQ()
         {
             //We are going to store our result boards here           
             List<Position> positions = new List<Position>();
 
             for (byte x = 0; x < 64; x++)
             {
-                Piece piece = examineBoard.Squares[x].Piece;
+                Piece piece = Squares[x].Piece;
 
                 //Make sure there is a piece on the square
                 if (piece == null)
                     continue;
 
                 //Make sure the color is the same color as the one we are moving.
-                if (piece.PieceColor != examineBoard.WhoseMove)
+                if (piece.PieceColor != WhoseMove)
                     continue;
 
                 //For each valid move for this piece
                 foreach (byte dst in piece.ValidMoves)
                 {
-                    if (examineBoard.Squares[dst].Piece == null)
+                    if (Squares[dst].Piece == null)
                     {
                         continue;
                     }
@@ -552,7 +549,7 @@ namespace ChessEngine.Engine
                         continue;
                     }
 
-                    Piece pieceAttacked = examineBoard.Squares[move.DstPosition].Piece;
+                    Piece pieceAttacked = Squares[move.DstPosition].Piece;
 
                     move.Score += pieceAttacked.PieceValue;
 
@@ -571,14 +568,14 @@ namespace ChessEngine.Engine
             return positions;
         }
 
-        internal static bool SearchForMate(ChessPieceColor movingSide, Board examineBoard, ref bool blackMate, ref bool whiteMate, ref bool staleMate)
+        public bool SearchForMate(ChessPieceColor movingSide)
         {
             bool foundNonCheckBlack = false;
             bool foundNonCheckWhite = false;
 
             for (byte x = 0; x < 64; x++)
             {
-                Square sqr = examineBoard.Squares[x];
+                Square sqr = Squares[x];
 
                 //Make sure there is a piece on the square
                 if (sqr.Piece == null)
@@ -593,13 +590,13 @@ namespace ChessEngine.Engine
                 {
 
                     //We make copies of the board and move so that we can move it without effecting the parent board
-                    Board board = examineBoard.FastCopy();
+                    Board board = FastBoardCopy();
 
                     //Make move so we can examine it
-                    Board.MovePiece(board, x, dst, ChessPieceType.Queen);
+                    board.MovePiece(x, dst, ChessPieceType.Queen);
 
                     //We Generate Valid Moves for Board
-                    PieceValidMoves.GenerateValidMoves(board);
+                    board.GenerateValidMoves();
 
                     if (board.BlackCheck == false)
                     {
@@ -623,37 +620,36 @@ namespace ChessEngine.Engine
 
             if (foundNonCheckBlack == false)
             {
-                if (examineBoard.BlackCheck)
+                if (BlackCheck)
                 {
-                    blackMate = true;
+                    BlackMate = true;
                     return true;
                 }
-                if (!examineBoard.WhiteMate && movingSide != ChessPieceColor.White)
+                if (!WhiteMate && movingSide != ChessPieceColor.White)
                 {
-                    staleMate = true;
+                    StaleMate = true;
                     return true;
                 }
             }
 
             if (foundNonCheckWhite == false)
             {
-                if (examineBoard.WhiteCheck)
+                if (WhiteCheck)
                 {
-                    whiteMate = true;
+                    WhiteMate = true;
                     return true;
                 }
-                if (!examineBoard.BlackMate && movingSide != ChessPieceColor.Black)
+                if (!BlackMate && movingSide != ChessPieceColor.Black)
                 {
-                    staleMate = true;
+                    StaleMate = true;
                     return true;
                 }
             }
 
             return false;
-           
         }
 
-        private static byte ModifyDepth(byte depth, int possibleMoves)
+        private byte ModifyDepth(byte depth, int possibleMoves)
         {
             if (possibleMoves <= 20 || piecesRemaining < 14)
             {
@@ -668,7 +664,7 @@ namespace ChessEngine.Engine
             return depth;
         }
 
-        private static int StaticExchangeEvaluation(Square examineSquare)
+        private int StaticExchangeEvaluation(Square examineSquare)
         {
             if (examineSquare.Piece == null)
             {
@@ -681,6 +677,5 @@ namespace ChessEngine.Engine
 
             return examineSquare.Piece.PieceActionValue - examineSquare.Piece.AttackedValue + examineSquare.Piece.DefendedValue;
         }
-
     }
 }

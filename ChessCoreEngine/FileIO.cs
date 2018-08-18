@@ -8,23 +8,23 @@ namespace ChessEngine.Engine
 {
     internal static class FileIO
     {
-        internal static void SaveCurrentGameMove(Board currentBoard, Board previousBoard, ICollection<OpeningMove> gameBook, MoveContent bestMove)
+        internal static void SaveCurrentGameMove(Board currentBoard, Board previousBoard, Book gameBook, MoveContent bestMove)
         {
             try
             {
                 var move = new OpeningMove();
 
-                move.StartingFEN = Board.Fen(true, previousBoard);
-                move.EndingFEN = Board.Fen(true, currentBoard);
+                move.StartingFEN = previousBoard.Fen(true);
+                move.EndingFEN = currentBoard.Fen(true);
                 move.Moves.Add(bestMove);
 
-                gameBook.Add(move);
+                gameBook.AddMove(move);
 
-                foreach (OpeningMove move1 in gameBook)
+                foreach (OpeningMove move1 in gameBook.MoveList.Values)
                 {
                     byte repeatedMoves = 0;
 
-                    foreach (OpeningMove move2 in gameBook)
+                    foreach (OpeningMove move2 in gameBook.MoveList.Values)
                     {
                         if (move1.EndingFEN == move2.EndingFEN)
                         {
@@ -93,7 +93,7 @@ namespace ChessEngine.Engine
             return true;
         }
 
-        internal static bool LoadGame(String filePath, ref Board chessBoard, ChessPieceColor whoseMove, ref Stack<MoveContent> moveHistory, ref List<OpeningMove> currentGameBook, ref List<OpeningMove> undoGameBook)
+        internal static bool LoadGame(String filePath, Board chessBoard, ChessPieceColor whoseMove, Stack<MoveContent> moveHistory, Book currentGameBook, Book undoGameBook)
         {
             if (String.IsNullOrEmpty(filePath))
             {

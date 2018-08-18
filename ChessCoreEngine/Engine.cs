@@ -1,15 +1,18 @@
+using ChessCoreEngine.Utils;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Text;
 
 namespace ChessEngine.Engine
 {
     public sealed class Engine
     {
         #region InternalMembers
+        static Logger logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
 
-        internal List<OpeningMove> CurrentGameBook;
-        internal List<OpeningMove> UndoGameBook;
+        internal Book CurrentGameBook;
+        internal Book UndoGameBook;
         
         #endregion
 
@@ -20,9 +23,10 @@ namespace ChessEngine.Engine
         private Board UndoChessBoard;
         
         private Stack<MoveContent> MoveHistory;
-        private List<OpeningMove> OpeningBook;
+        private Book OpeningBook = null;
 
         private string pvLine;
+        public string PvLine { get { return pvLine; } set { pvLine = value; } }
 
         #endregion
 
@@ -38,6 +42,7 @@ namespace ChessEngine.Engine
 
         public enum TimeSettings
         {
+            Moves40In1Minute,
             Moves40In5Minutes,
             Moves40In10Minutes,
             Moves40In20Minutes,
@@ -58,68 +63,73 @@ namespace ChessEngine.Engine
 
         //Stats
         public int NodesSearched;
-        public int NodesQuiessence;
+        public int NodesQuiescence;
         public byte PlyDepthSearched;
         public byte PlyDepthReached;
         public byte RootMovesSearched;
 
         public TimeSettings GameTimeSettings;
-
-        public string FEN
+        public bool TrySetTimeControl(string numMoves, string timeControl)
         {
-            get { return Board.Fen(false, ChessBoard); }
-        }
+            if (!int.TryParse(numMoves, out int movesCount)) { logger.Error($"Parameter numMoves not int value -> {numMoves}"); return false; }
+            if (!int.TryParse(timeControl, out int timeControlValue)) { logger.Error($"Parameter timeControl not int value -> {timeControl}"); return false; }
 
-        public MoveContent LastMove
-        {
-            get { return ChessBoard.LastMove; }
+            if (movesCount == 40)
+            {
+                if (timeControlValue >= 0 && timeControlValue < 5) { GameTimeSettings = TimeSettings.Moves40In1Minute; return true; }
+                if (timeControlValue >= 5 && timeControlValue < 10) { GameTimeSettings = TimeSettings.Moves40In5Minutes; return true; }
+                if (timeControlValue >= 10 && timeControlValue < 20) { GameTimeSettings = TimeSettings.Moves40In10Minutes; return true; }
+                if (timeControlValue >= 20 && timeControlValue < 30) { GameTimeSettings = TimeSettings.Moves40In20Minutes; return true; }
+                if (timeControlValue >= 30 && timeControlValue < 40) { GameTimeSettings = TimeSettings.Moves40In30Minutes; return true; }
+                if (timeControlValue >= 40 && timeControlValue < 60) { GameTimeSettings = TimeSettings.Moves40In40Minutes; return true; }
+                if (timeControlValue >= 60 && timeControlValue < 90) { GameTimeSettings = TimeSettings.Moves40In60Minutes; return true; }
+                if (timeControlValue >= 90) GameTimeSettings = TimeSettings.Moves40In90Minutes;
+                return true;
+            }
+
+            logger.Error($"Supplied values {numMoves} {timeControl} don't match supported values.");
+            return false;
         }
+        public string FEN => ChessBoard.Fen(false);
+
+        public MoveContent LastMove => ChessBoard.LastMove; 
 
         public Difficulty GameDifficulty
         {
-           	get 
-			{
-				if (PlyDepthSearched == 3)
-				{
-					return Difficulty.Easy;
-				}
-				else if (PlyDepthSearched == 5)
-				{
-					return Difficulty.Medium;
-				}
-				else if (PlyDepthSearched == 6)
-				{
-					return Difficulty.Hard;
-				}
-				else if (PlyDepthSearched == 7)
-				{
-					return Difficulty.VeryHard;
-				}
-
-				return Difficulty.Medium;
-			
+            get
+            {
+                switch (PlyDepthSearched)
+                {
+                    case 3: return Difficulty.Easy;
+                    case 5: return Difficulty.Medium;
+                    case 6: return Difficulty.Hard;
+                    case 7: return Difficulty.VeryHard;
+                    default: return Difficulty.Medium;
+                }
 			}
 			set
             {
-                if (value == Difficulty.Easy)
+                switch (value)
                 {
-                    PlyDepthSearched = 3;
-                    GameTimeSettings = TimeSettings.Moves40In10Minutes;
-                }
-                else if (value == Difficulty.Medium)
-                {
-                    PlyDepthSearched = 5;
-                    GameTimeSettings = TimeSettings.Moves40In20Minutes;
-                }
-                else if (value == Difficulty.Hard)
-                {
-                    PlyDepthSearched = 6;
-                    GameTimeSettings = TimeSettings.Moves40In60Minutes;
-                }
-                else if (value == Difficulty.VeryHard)
-                {
-                    PlyDepthSearched = 7;
-                    GameTimeSettings = TimeSettings.Moves40In90Minutes;
+                    case Difficulty.Easy:
+                        PlyDepthSearched = 3;
+                        GameTimeSettings = TimeSettings.Moves40In10Minutes;
+                        break;
+                    case Difficulty.Medium:
+                        PlyDepthSearched = 5;
+                        //PlyDepthSearched = 10;
+                        GameTimeSettings = TimeSettings.Moves40In20Minutes;
+                        break;
+                    case Difficulty.Hard:
+                        PlyDepthSearched = 6;
+                        //PlyDepthSearched = 12;
+                        GameTimeSettings = TimeSettings.Moves40In60Minutes;
+                        break;
+                    case Difficulty.VeryHard:
+                        PlyDepthSearched = 7;
+                        //PlyDepthSearched = 14;
+                        GameTimeSettings = TimeSettings.Moves40In90Minutes;
+                        break;
                 }
             }
         }
@@ -135,75 +145,34 @@ namespace ChessEngine.Engine
             get { return ChessBoard.StaleMate; }
             set { ChessBoard.StaleMate = value; }
         }
-        public bool RepeatedMove
-        {
-            get
-            {
-                if (ChessBoard.RepeatedMove >= 3)
-                {
-                    return true;
-                }
 
-                return false;
-            }
-        }
+        public bool RepeatedMove => ChessBoard.RepeatedMove >= 3;
 
-        public string PvLine
-        {
-            get { return pvLine;}
-        }
+        public bool FiftyMove => ChessBoard.FiftyMove >= 50;
 
-        public bool FiftyMove
-        {
-             get
-             {
-                 if (ChessBoard.FiftyMove >= 50)
-                 {
-                     return true;
-                 }
-
-                 return false;
-             }
-        }
-
-        public bool InsufficientMaterial
-        {
-            get
-            {
-                return ChessBoard.InsufficientMaterial;
-            }
-        }
-
+        public bool InsufficientMaterial => ChessBoard.InsufficientMaterial;
         #endregion
 
         #region Constructors
 
-        public Engine()
-        {
-            InitiateEngine();
-            InitiateBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-        }
+        public Engine() { NewGame(); }
 
-        public Engine(string fen)
+        public Engine(string fen) { NewGame(fen); }
+
+        public void NewGame(string fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
         {
             InitiateEngine();
             InitiateBoard(fen);
-        }
-
-        public void NewGame()
-        {
-            InitiateEngine();
-            InitiateBoard("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
         }
 
         public void InitiateBoard(string fen)
         {
             ChessBoard = new Board(fen);
 
-            if (!String.IsNullOrEmpty(fen))
+            if (!string.IsNullOrEmpty(fen))
             {
-                PieceValidMoves.GenerateValidMoves(ChessBoard);
-                Evaluation.EvaluateBoardScore(ChessBoard);
+                GenerateValidMoves();
+                ChessBoard.EvaluateBoardScore();
             }
         }
 
@@ -213,72 +182,28 @@ namespace ChessEngine.Engine
 
             MoveHistory = new Stack<MoveContent>();
             HumanPlayer = ChessPieceColor.White;
-            OpeningBook = new List<OpeningMove>();
-            CurrentGameBook = new List<OpeningMove>();
+            if (OpeningBook == null) OpeningBook = new Book(true);
+            CurrentGameBook = new Book();
             PieceMoves.InitiateChessPieceMotion();
-            LoadOpeningBook();
         }
-
         #endregion
 
         #region Methods
-
-        public void SetChessPieceSelection(byte boardColumn, byte boardRow,
-                                          bool selection)
+        public void SetChessPieceSelection(byte boardColumn, byte boardRow, bool selection)
         {
             byte index = GetBoardIndex(boardColumn, boardRow);
+            Piece piece = ChessBoard.Squares[index].Piece;
 
-            if (ChessBoard.Squares[index].Piece == null)
-            {
-                return;
-            }
-            if (ChessBoard.Squares[index].Piece.PieceColor != HumanPlayer)
-            {
-                return;
-            }
-            if (ChessBoard.Squares[index].Piece.PieceColor != WhoseMove)
-            {
-                return;
-            }
-            ChessBoard.Squares[index].Piece.Selected = selection;
-        }
+            if ((piece == null) || (piece.PieceColor != HumanPlayer) || (piece.PieceColor != WhoseMove)) return;
 
-        public int ValidateOpeningBook()
-        {
-            return Book.ValidateOpeningBook(OpeningBook);
+            piece.Selected = selection;
         }
 
         private static bool CheckForMate(ChessPieceColor whosTurn, ref Board chessBoard)
         {
-            Search.SearchForMate(whosTurn, chessBoard, ref chessBoard.BlackMate,
-                                 ref chessBoard.WhiteMate, ref chessBoard.StaleMate);
+            chessBoard.SearchForMate(whosTurn);
 
-            if (chessBoard.BlackMate || chessBoard.WhiteMate || chessBoard.StaleMate)
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool FindPlayBookMove(ref MoveContent bestMove, Board chessBoard, IEnumerable<OpeningMove> openingBook)
-        {
-            //Get the Hash for the current Board;
-            string boardFen= Board.Fen(true, chessBoard);
-
-            //Check the Opening Move Book
-            foreach (OpeningMove move in openingBook)
-            {
-                if (move.StartingFEN.Contains(boardFen))
-                {
-                    int index = 0;
-
-                    bestMove = move.Moves[index];
-                    return true;
-                }
-            }
-
-            return false;
+            return ((chessBoard.BlackMate || chessBoard.WhiteMate || chessBoard.StaleMate) ? true : false);
         }
 
         public void Undo()
@@ -289,17 +214,14 @@ namespace ChessEngine.Engine
                 PieceTakenRemove(PreviousChessBoard.LastMove);
 
                 ChessBoard = new Board(UndoChessBoard);
-                CurrentGameBook = new List<OpeningMove>(UndoGameBook);
+                CurrentGameBook = UndoGameBook.MakeClone();
 
-                PieceValidMoves.GenerateValidMoves(ChessBoard);
-                Evaluation.EvaluateBoardScore(ChessBoard);
+                ChessBoard.GenerateValidMoves();
+                ChessBoard.EvaluateBoardScore();
             }
         }
 
-        private static byte GetBoardIndex(byte boardColumn, byte boardRow)
-        {
-            return (byte)(boardColumn + (boardRow * 8));
-        }
+        private static byte GetBoardIndex(byte boardColumn, byte boardRow) => (byte)(boardColumn + (boardRow * 8));
 
         public byte[] GetEnPassantMoves()
         {
@@ -318,43 +240,22 @@ namespace ChessEngine.Engine
 
         public bool GetBlackMate()
         {
-            if (ChessBoard == null)
-            {
-                return false;
-            }
+            if (ChessBoard == null) return false;
 
             return ChessBoard.BlackMate;
         }
 
-        public bool GetWhiteMate()
-        {
-            return ChessBoard.WhiteMate;
-        }
+        public bool GetWhiteMate() => ChessBoard.WhiteMate;
 
-        public bool GetBlackCheck()
-        {
-            return ChessBoard.BlackCheck;
-        }
+        public bool GetBlackCheck() => ChessBoard.BlackCheck;
 
-        public bool GetWhiteCheck()
-        {
-            return ChessBoard.WhiteCheck;
-        }
+        public bool GetWhiteCheck() => ChessBoard.WhiteCheck;
 
-        public byte GetRepeatedMove()
-        {
-            return ChessBoard.RepeatedMove;
-        }
+        public byte GetRepeatedMove() => ChessBoard.RepeatedMove;
 
-        public byte GetFiftyMoveCount()
-        {
-            return ChessBoard.FiftyMove;
-        }
+        public byte GetFiftyMoveCount() => ChessBoard.FiftyMove;
 
-        public Stack<MoveContent> GetMoveHistory()
-        {
-            return MoveHistory;
-        }
+        public Stack<MoveContent> GetMoveHistory() => MoveHistory;
 
         public ChessPieceType GetPieceTypeAt(byte boardColumn, byte boardRow)
         {
@@ -368,58 +269,26 @@ namespace ChessEngine.Engine
             return ChessBoard.Squares[index].Piece.PieceType;
         }
 
-        public ChessPieceType GetPieceTypeAt(byte index)
-        {
-            if (ChessBoard.Squares[index].Piece == null)
-            {
-                return ChessPieceType.None;
-            }
-
-            return ChessBoard.Squares[index].Piece.PieceType;
-        }
+        public ChessPieceType GetPieceTypeAt(byte index) => ((ChessBoard.Squares[index].Piece == null) ? ChessPieceType.None : ChessBoard.Squares[index].Piece.PieceType);
 
         public ChessPieceColor GetPieceColorAt(byte boardColumn, byte boardRow)
         {
             byte index = GetBoardIndex(boardColumn, boardRow);
 
-            if (ChessBoard.Squares[index].Piece == null)
-            {
-                return ChessPieceColor.White;
-            }
-            return ChessBoard.Squares[index].Piece.PieceColor;
+            return ((ChessBoard.Squares[index].Piece == null) ? ChessPieceColor.White : ChessBoard.Squares[index].Piece.PieceColor);
         }
 
-        public ChessPieceColor GetPieceColorAt(byte index)
-        {
-            if (ChessBoard.Squares[index].Piece == null)
-            {
-                return ChessPieceColor.White;
-            }
-            return ChessBoard.Squares[index].Piece.PieceColor;
-        }
+        public ChessPieceColor GetPieceColorAt(byte index) => ((ChessBoard.Squares[index].Piece == null) ? ChessPieceColor.White : ChessBoard.Squares[index].Piece.PieceColor);
 
         public bool GetChessPieceSelected(byte boardColumn, byte boardRow)
         {
             byte index = GetBoardIndex(boardColumn, boardRow);
 
-            if (ChessBoard.Squares[index].Piece == null)
-            {
-                return false;
-            }
-
-            return ChessBoard.Squares[index].Piece.Selected;
+            return ((ChessBoard.Squares[index].Piece == null) ? false : ChessBoard.Squares[index].Piece.Selected);
         }
 
-        public void GenerateValidMoves()
-        {
-            PieceValidMoves.GenerateValidMoves(ChessBoard);
-        }
-
-        public int EvaluateBoardScore()
-        {
-            Evaluation.EvaluateBoardScore(ChessBoard);
-            return ChessBoard.Score;
-        }
+        public void GenerateValidMoves() => ChessBoard.GenerateValidMoves();
+        public int EvaluateBoardScore() => ChessBoard.EvaluateBoardScore();
 
         public byte[][] GetValidMoves(byte boardColumn, byte boardRow)
         {
@@ -707,14 +576,14 @@ namespace ChessEngine.Engine
 
             PreviousChessBoard = new Board(ChessBoard);
             UndoChessBoard = new Board(ChessBoard);
-            UndoGameBook = new List<OpeningMove>(CurrentGameBook);
+            UndoGameBook = new Book(CurrentGameBook);
 
-            Board.MovePiece(ChessBoard, srcPosition, dstPosition, PromoteToPieceType);
+            ChessBoard.MovePiece(srcPosition, dstPosition, PromoteToPieceType);
 
             ChessBoard.LastMove.GeneratePGNString(ChessBoard);
 
-            PieceValidMoves.GenerateValidMoves(ChessBoard);
-            Evaluation.EvaluateBoardScore(ChessBoard);
+            GenerateValidMoves();
+            ChessBoard.EvaluateBoardScore();
 
             //If there is a check in place, check if this is still true;
             if (piece.PieceColor == ChessPieceColor.White)
@@ -723,7 +592,7 @@ namespace ChessEngine.Engine
                 {
                     //Invalid Move
                     ChessBoard = new Board(PreviousChessBoard);
-                    PieceValidMoves.GenerateValidMoves(ChessBoard);
+                    ChessBoard.GenerateValidMoves();
                     return false;
                 }
             }
@@ -733,7 +602,7 @@ namespace ChessEngine.Engine
                 {
                     //Invalid Move
                     ChessBoard = new Board(PreviousChessBoard);
-                    PieceValidMoves.GenerateValidMoves(ChessBoard);
+                    ChessBoard.GenerateValidMoves();
                     return false;
                 }
             }
@@ -897,13 +766,11 @@ namespace ChessEngine.Engine
             MoveContent bestMove = new MoveContent();
            
             //If there is no playbook move search for the best move
-            if (FindPlayBookMove(ref bestMove, ChessBoard, OpeningBook) == false
-                || ChessBoard.FiftyMove > 45 || ChessBoard.RepeatedMove >= 2)
+            if (OpeningBook.TryGetMove(ChessBoard, ref bestMove) == false || ChessBoard.FiftyMove > 45 || ChessBoard.RepeatedMove >= 2)
             {
-                if (FindPlayBookMove(ref bestMove, ChessBoard, CurrentGameBook) == false ||
-                    ChessBoard.FiftyMove > 45 || ChessBoard.RepeatedMove >= 2)
+                if (CurrentGameBook.TryGetMove(ChessBoard, ref bestMove) == false || ChessBoard.FiftyMove > 45 || ChessBoard.RepeatedMove >= 2)
                 {
-					bestMove = Search.IterativeSearch(ChessBoard, PlyDepthSearched, ref NodesSearched, ref NodesQuiessence, ref pvLine, ref PlyDepthReached, ref RootMovesSearched, CurrentGameBook);
+					bestMove = ChessBoard.IterativeSearch(PlyDepthSearched, ref NodesSearched, ref NodesQuiescence, ref pvLine, ref PlyDepthReached, ref RootMovesSearched, CurrentGameBook.MoveList);
                 }
             }
  
@@ -912,7 +779,7 @@ namespace ChessEngine.Engine
 
             RootMovesSearched = (byte)resultBoards.Positions.Count;
 
-            Board.MovePiece(ChessBoard, bestMove.MovingPiecePrimary.SrcPosition, bestMove.MovingPiecePrimary.DstPosition, ChessPieceType.Queen);
+            ChessBoard.MovePiece(bestMove.MovingPiecePrimary.SrcPosition, bestMove.MovingPiecePrimary.DstPosition, ChessPieceType.Queen);
 
             ChessBoard.LastMove.GeneratePGNString(ChessBoard);
 
@@ -929,8 +796,8 @@ namespace ChessEngine.Engine
                 sqr.Piece.AttackedValue = 0;
             }
 
-            PieceValidMoves.GenerateValidMoves(ChessBoard);
-            Evaluation.EvaluateBoardScore(ChessBoard);
+            ChessBoard.GenerateValidMoves();
+            ChessBoard.EvaluateBoardScore();
 
             PieceTakenAdd(ChessBoard.LastMove);
 
@@ -955,7 +822,6 @@ namespace ChessEngine.Engine
 
             Thinking = false;
 		}
-
         #endregion
 
         #region Test
@@ -968,26 +834,51 @@ namespace ChessEngine.Engine
         #endregion
 
         #region FileIO
+        public bool SaveGame(string filePath) => FileIO.SaveGame(filePath, ChessBoard, WhoseMove, MoveHistory);
 
-        public bool SaveGame(string filePath)
-        {
-            return FileIO.SaveGame(filePath, ChessBoard, WhoseMove, MoveHistory);
-        }
-
-        public bool LoadGame(String filePath)
-        {
-            return FileIO.LoadGame(filePath, ref ChessBoard, WhoseMove, ref MoveHistory, ref CurrentGameBook, ref UndoGameBook);
-        }
-
-        public bool LoadOpeningBook()
-        {
-            OpeningBook = Book.LoadOpeningBook();
-
-            return true;
-        }
-
+        public bool LoadGame(String filePath) => FileIO.LoadGame(filePath, ChessBoard, WhoseMove, MoveHistory, CurrentGameBook, UndoGameBook);
         #endregion
-   
 
+        #region Show Board
+        public string DrawBoard()
+        {
+            //Console.Clear();
+            StringBuilder result = new StringBuilder();
+
+            for (byte i = 0; i < 64; i++)
+            {
+                if (i % 8 == 0)
+                {
+                    result.AppendLine();
+                    result.AppendLine(" ---------------------------------");
+                    result.Append((8 - (i / 8)));
+                }
+
+                ChessPieceType PieceType = GetPieceTypeAt(i);
+                ChessPieceColor PieceColor = GetPieceColorAt(i);
+
+                switch (PieceType)
+                {
+                    case ChessPieceType.Pawn: result.Append(FormatPiece("Pp", PieceColor)); break;
+                    case ChessPieceType.Knight: result.Append(FormatPiece("Nn", PieceColor)); break;
+                    case ChessPieceType.Bishop: result.Append(FormatPiece("Bb", PieceColor)); break;
+                    case ChessPieceType.Rook: result.Append(FormatPiece("Rr", PieceColor)); break;
+                    case ChessPieceType.Queen: result.Append(FormatPiece("Qq", PieceColor)); break;
+                    case ChessPieceType.King: result.Append(FormatPiece("Kk", PieceColor)); break;
+                    default: result.Append(FormatPiece("  ", PieceColor)); break;
+                }
+
+                if (i % 8 == 7) result.Append("|");
+            }
+
+            result.AppendLine();
+            result.AppendLine(" ---------------------------------");
+            result.AppendLine("   A   B   C   D   E   F   G   H");
+
+            return result.ToString();
+
+            string FormatPiece(string pieceOnConsole, ChessPieceColor pieceColor) => $"| {pieceOnConsole[((pieceColor == ChessPieceColor.Black) ? 0 : 1)]} ";
+        }
+        #endregion
     }
 }

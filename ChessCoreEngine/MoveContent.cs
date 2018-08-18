@@ -84,6 +84,7 @@ namespace ChessEngine.Engine
 
         public string PgnMove;
 
+        public string Comment = null;
 
         public MoveContent()
         {
@@ -135,6 +136,7 @@ namespace ChessEngine.Engine
                 if (c=='{')
                 {
                     comment = true;
+                    if (Comment == null) Comment = "";
                     continue;
                 }
                 if (c == '}')
@@ -145,6 +147,7 @@ namespace ChessEngine.Engine
 
                 if (comment)
                 {
+                    Comment += c;
                     continue;
                 }
        
@@ -169,7 +172,7 @@ namespace ChessEngine.Engine
                 }
                 if (srcCol >= 0)
                 {
-                    int srcRow = int.Parse(c.ToString());
+                    int srcRow = (int)(c - '0'); // int.Parse(c.ToString());
 
                     if (!srcFound)
                     {
@@ -501,7 +504,9 @@ namespace ChessEngine.Engine
             return (byte)(col + (row * 8));
         }
 
-        private static string GetColumnFromInt(int column)
+        readonly static string[] columnLabels = new string[] { "a", "b", "c", "d", "e", "f", "g", "h" };
+        private static string GetColumnFromInt(int columnIdx) => columnLabels[columnIdx];
+        /*
         {
             switch (column)
             {
@@ -525,8 +530,10 @@ namespace ChessEngine.Engine
                     return "Unknown";
             }
         }
+        */
 
-        private static int GetIntFromColumn(char column)
+        private static int GetIntFromColumn(char column) => (int)(column - 'a');
+        /*
         {
             switch (column)
             {
@@ -550,6 +557,7 @@ namespace ChessEngine.Engine
                     return -1;
             }
         }
+        */
 
         private static ChessPieceType GetPieceType(char c)
         {

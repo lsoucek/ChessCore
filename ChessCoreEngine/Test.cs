@@ -73,27 +73,20 @@ namespace ChessEngine.Engine
                 foreach (byte dst in sqr.Piece.ValidMoves)
                 {
                     //We make copies of the board and move so that we can move it without effecting the parent board
-                    Board board = examineBoard.FastCopy();
+                    Board board = examineBoard.FastBoardCopy();
 
                     //Make move so we can examine it
-                    Board.MovePiece(board, x, dst, ChessPieceType.Queen);
+                    board.MovePiece(x, dst, ChessPieceType.Queen);
 
                     //We Generate Valid Moves for Board
-                    PieceValidMoves.GenerateValidMoves(board);
+                    board.GenerateValidMoves();
 
                     
-                    if (board.BlackCheck && movingSide == ChessPieceColor.Black)
-                    {
-                        continue;
-                    }
-
-                    if (board.WhiteCheck && movingSide == ChessPieceColor.White)
-                    {
-                        continue;
-                    } 
+                    if (board.BlackCheck && movingSide == ChessPieceColor.Black) continue;
+                    if (board.WhiteCheck && movingSide == ChessPieceColor.White) continue;
 
                     //We calculate the board score
-                    Evaluation.EvaluateBoardScore(board);
+                    board.EvaluateBoardScore();
 
                     //Invert Score to support Negamax
                     board.Score = SideToMoveScore(board.Score, GetOppositeColor(movingSide));
